@@ -288,6 +288,12 @@ Sprites and avatars support:
 
 `firmware/assets/converted_files/hexe/sprites/push-sprite.sh SPRITE_NAME` uploads the named sprite from `ui_manifest.json`. It uploads the RGB565 file and, when declared or present beside it, the matching `alpha8` or `alpha1` mask.
 
+## P4 Weather Overview
+
+The Voice backend composes the Waveshare P4 weather overview as one 800x420 RGB888 prepared asset. The latest radar frame remains visible through the center, while location and temperature occupy the upper-left edge, the condition icon occupies the upper-right edge, and the daily high/low stays at the lower-left edge. If radar is unavailable, the same layout is rendered over a neutral weather background.
+
+Condition icons are derived from Meteocons and are bundled with their MIT license in `src/hexevoice/assets/weather_icons`. The composed image uses the existing `weather.radar` asset download contract, so changing this layout does not require a firmware rebuild.
+
 ## SD Media Reformat
 
 The endpoint supports a media-only reformat command. This is not a partition format. It deletes files and subdirectories under:

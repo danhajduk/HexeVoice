@@ -101,8 +101,14 @@ def snapshot(*, radar=True):
         "snapshot_id": "weather-home-1",
         "cache_revision": "weather-revision-1",
         "location": {"label": "Home"},
-        "current_conditions": {"temperature": 56, "condition": "Clear"},
-        "forecast_summary": {"summary": "Clear"},
+        "current_conditions": {
+            "temperature": 56,
+            "unit": "F",
+            "condition": "Clear",
+            "condition_key": "clear",
+            "is_day": True,
+        },
+        "forecast_summary": {"summary": "Clear", "today_high": 63, "today_low": 48},
         "transcript": "It is 56 degrees and clear.",
         "tts": {
             "status": "ready",
@@ -155,8 +161,11 @@ def test_weather_success_result_renders_matching_snapshot():
         )
     )
 
-    assert manager.calls[0][0] == "layout"
-    assert manager.calls[1][0] == "sound"
+    assert [call[0] for call in manager.calls] == ["asset_prepare", "layout", "sound"]
+    assert manager.calls[0][1]["asset"]["asset_type"] == "weather.radar"
+    elements = manager.calls[1][1]["layout"]["elements"]
+    assert elements[0]["type"] == "image"
+    assert elements[0]["item"] == "weather_overview"
 
 
 def test_weather_success_waits_for_matching_snapshot():

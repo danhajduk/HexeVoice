@@ -36,6 +36,15 @@ def test_prepares_center_cropped_rgb888_asset_and_reuses_cache(tmp_path, monkeyp
     service = RadarAssetService(tmp_path)
     snapshot = {
         "snapshot_id": "weather-home-1",
+        "location": {"label": "Home"},
+        "current_conditions": {
+            "temperature": 56,
+            "unit": "F",
+            "condition": "Partly cloudy",
+            "condition_key": "partly_cloudy",
+            "is_day": True,
+        },
+        "forecast_summary": {"today_high": 63, "today_low": 48},
         "radar": {
             "status": "ready",
             "frame_id": "frame-1",
@@ -54,6 +63,32 @@ def test_prepares_center_cropped_rgb888_asset_and_reuses_cache(tmp_path, monkeyp
     center_offset = ((RADAR_HEIGHT // 2) * RADAR_WIDTH + (RADAR_WIDTH // 2)) * 3
     assert prepared.path.read_bytes()[center_offset : center_offset + 3] == bytes((20, 180, 80))
     assert sha256(prepared.path.read_bytes()).hexdigest() == prepared.sha256
+
+
+def test_prepares_weather_canvas_without_radar(tmp_path):
+    service = RadarAssetService(tmp_path)
+    snapshot = {
+        "snapshot_id": "weather-home-2",
+        "location": {"label": "Home"},
+        "current_conditions": {
+            "temperature": 56,
+            "unit": "fahrenheit",
+            "condition": "Clear",
+            "condition_key": "clear",
+            "is_day": False,
+        },
+        "forecast_summary": {"today_high": 63, "today_low": 48},
+        "radar": {"status": "absent"},
+    }
+
+    prepared = asyncio.run(service.prepare(snapshot))
+    pixels = prepared.path.read_bytes()
+
+    assert prepared.size_bytes == RADAR_WIDTH * RADAR_HEIGHT * 3
+    background_offset = (1 * RADAR_WIDTH + 1) * 3
+    assert pixels[background_offset : background_offset + 3] == bytes((7, 19, 29))
+    panel_offset = (30 * RADAR_WIDTH + 30) * 3
+    assert pixels[panel_offset : panel_offset + 3] != bytes((7, 19, 29))
 
 
 def test_rejects_source_checksum_mismatch(tmp_path, monkeypatch):

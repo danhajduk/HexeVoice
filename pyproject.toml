@@ -11,3 +11,6 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+hexevoice = ["assets/weather_icons/*.png", "assets/weather_icons/*.ttf", "assets/weather_icons/*.txt"]

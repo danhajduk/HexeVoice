@@ -104,8 +104,6 @@ class P4QuickActionService:
 
     async def _prepare_radar_for_connected_endpoints(self, snapshot: dict[str, Any]) -> None:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
-        if radar.get("status") != "ready":
-            return
         try:
             asset = await self._radar_assets.prepare(snapshot)
             prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
@@ -251,20 +249,25 @@ class P4QuickActionService:
         if snapshot is None:
             await self._show_message(endpoint_id, "Weather unavailable", "No prepared forecast is available.", "weather")
             return
-        current = snapshot.get("current_conditions") if isinstance(snapshot.get("current_conditions"), dict) else {}
-        forecast = snapshot.get("forecast_summary") if isinstance(snapshot.get("forecast_summary"), dict) else {}
-        location = snapshot.get("location") if isinstance(snapshot.get("location"), dict) else {}
-        temperature = current.get("temperature")
-        temperature_text = f"{temperature} degrees" if temperature is not None else "Temperature unavailable"
-        condition = str(current.get("condition") or forecast.get("summary") or "Current weather")
-        layout = self._layout(
-            "weather",
-            [
-                (str(location.get("label") or "Weather"), 170, 32, "#55B8FF"),
-                (temperature_text, 275, 64, "#D8FFFA"),
-                (condition, 365, 30, "#35F4DB"),
-                ("Tap weather again for radar" if self._radar_ready() else "Radar is not currently available", 465, 20, "#A9BBC8"),
-            ],
+        radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
+        asset = await self._radar_assets.prepare(snapshot)
+        prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
+        prepared["expires_at"] = radar.get("expires_at")
+        result = await self._manager.push_asset_prepare_command(endpoint_id=endpoint_id, asset=prepared)
+        if not result.get("accepted"):
+            raise RuntimeError(str(result.get("reason") or "weather_asset_prepare_rejected"))
+        layout = self._layout("weather", [])
+        layout["elements"].insert(
+            0,
+            {
+                "type": "image",
+                "item": "weather_overview",
+                "asset_id": asset.asset_id,
+                "x": asset.x,
+                "y": asset.y,
+                "width": asset.width,
+                "height": asset.height,
+            },
         )
         await self._manager.push_ui_layout_command(endpoint_id=endpoint_id, layout=layout, duration_seconds=60)
         tts = snapshot.get("tts") if isinstance(snapshot.get("tts"), dict) else {}
