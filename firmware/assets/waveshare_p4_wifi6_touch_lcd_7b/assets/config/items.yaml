@@ -227,7 +227,7 @@ items:
     text: +
     font: manrope/message_20.hxf
     font_size: 20
-    color: '#35F4DB'
+    color: '#FF3030'
     align: center
     x: 130
     y: 80
