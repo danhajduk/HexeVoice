@@ -541,11 +541,16 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         for item in weather_test_screen["elements"]
         if item["type"] == "text"
     ] == [
-        ("weather_test_top_left", 175, 130),
-        ("weather_test_top_right", 849, 130),
-        ("weather_test_bottom_left", 175, 470),
-        ("weather_test_bottom_right", 849, 470),
-        ("weather_test_center", 512, 300),
+        ("weather_test_top_left_cross", 130, 80),
+        ("weather_test_top_left_label", 130, 104),
+        ("weather_test_top_right_cross", 880, 80),
+        ("weather_test_top_right_label", 880, 104),
+        ("weather_test_bottom_left_cross", 130, 470),
+        ("weather_test_bottom_left_label", 130, 494),
+        ("weather_test_bottom_right_cross", 849, 470),
+        ("weather_test_bottom_right_label", 849, 494),
+        ("weather_test_center_cross", 512, 300),
+        ("weather_test_center_label", 512, 324),
     ]
     conditional_screens = [
         screen for screen in screens if screen["id"] not in {"weather_test", "default"}

@@ -221,33 +221,56 @@ items:
     align: center
     x: 512
     y: 400
-  - &weather_test_marker
-    id: weather_test_top_left
+  - &weather_test_cross
+    id: weather_test_top_left_cross
     type: text
-    text: TOP LEFT
+    text: +
+    font: manrope/message_20.hxf
+    font_size: 20
+    color: '#35F4DB'
+    align: center
+    x: 130
+    y: 80
+  - <<: *weather_test_cross
+    id: weather_test_top_right_cross
+    x: 880
+  - <<: *weather_test_cross
+    id: weather_test_bottom_left_cross
+    y: 470
+  - <<: *weather_test_cross
+    id: weather_test_bottom_right_cross
+    x: 849
+    y: 470
+  - <<: *weather_test_cross
+    id: weather_test_center_cross
+    x: 512
+    y: 300
+  - &weather_test_label
+    id: weather_test_top_left_label
+    type: text
+    text: (130, 80)
     font: manrope/message_20.hxf
     font_size: 20
     color: '#D8FFFA'
     align: center
-    x: 175
-    y: 130
-  - <<: *weather_test_marker
-    id: weather_test_top_right
-    text: TOP RIGHT
+    x: 130
+    y: 104
+  - <<: *weather_test_label
+    id: weather_test_top_right_label
+    text: (880, 80)
+    x: 880
+  - <<: *weather_test_label
+    id: weather_test_bottom_left_label
+    text: (130, 470)
+    y: 494
+  - <<: *weather_test_label
+    id: weather_test_bottom_right_label
+    text: (849, 470)
     x: 849
-  - <<: *weather_test_marker
-    id: weather_test_bottom_left
-    text: BOTTOM LEFT
-    y: 470
-  - <<: *weather_test_marker
-    id: weather_test_bottom_right
-    text: BOTTOM RIGHT
-    x: 849
-    y: 470
-  - <<: *weather_test_marker
-    id: weather_test_center
-    text: CENTER
-    color: '#35F4DB'
+    y: 494
+  - <<: *weather_test_label
+    id: weather_test_center_label
+    text: (512, 300)
     x: 512
-    y: 300
+    y: 324
   - !include text.yaml
