@@ -111,6 +111,12 @@ items:
     data: timer
     x: 180
     y: 195
+  - id: activity_cross
+    type: activity_sprite
+    sprite: activity_cross
+    data: cross
+    x: 512
+    y: 300
   - id: big_clock
     type: big_clock
     sprite: idle_clock_frame
@@ -221,34 +227,10 @@ items:
     align: center
     x: 512
     y: 400
-  - &weather_test_cross
-    id: weather_test_top_left_cross
-    type: text
-    text: +
-    font: manrope/message_20.hxf
-    font_size: 20
-    color: '#FF3030'
-    align: center
-    x: 130
-    y: 80
-  - <<: *weather_test_cross
-    id: weather_test_top_right_cross
-    x: 880
-  - <<: *weather_test_cross
-    id: weather_test_bottom_left_cross
-    y: 470
-  - <<: *weather_test_cross
-    id: weather_test_bottom_right_cross
-    x: 849
-    y: 470
-  - <<: *weather_test_cross
-    id: weather_test_center_cross
-    x: 512
-    y: 300
   - &weather_test_label
     id: weather_test_top_left_label
     type: text
-    text: (130, 80)
+    text: 130, 80
     font: manrope/message_20.hxf
     font_size: 20
     color: '#D8FFFA'
@@ -257,20 +239,20 @@ items:
     y: 104
   - <<: *weather_test_label
     id: weather_test_top_right_label
-    text: (880, 80)
+    text: 880, 80
     x: 880
   - <<: *weather_test_label
     id: weather_test_bottom_left_label
-    text: (130, 470)
+    text: 130, 470
     y: 494
   - <<: *weather_test_label
     id: weather_test_bottom_right_label
-    text: (849, 470)
+    text: 849, 470
     x: 849
     y: 494
   - <<: *weather_test_label
     id: weather_test_center_label
-    text: (512, 300)
+    text: 512, 300
     x: 512
     y: 324
   - !include text.yaml

@@ -4,13 +4,23 @@ sidebars: true
 buttons: {preset: standard}
 items:
   - item: header_clock
-  - item: weather_test_top_left_cross
+  - item: activity_cross
+    x: 130
+    y: 80
   - item: weather_test_top_left_label
-  - item: weather_test_top_right_cross
+  - item: activity_cross
+    x: 880
+    y: 80
   - item: weather_test_top_right_label
-  - item: weather_test_bottom_left_cross
+  - item: activity_cross
+    x: 130
+    y: 470
   - item: weather_test_bottom_left_label
-  - item: weather_test_bottom_right_cross
+  - item: activity_cross
+    x: 849
+    y: 470
   - item: weather_test_bottom_right_label
-  - item: weather_test_center_cross
+  - item: activity_cross
+    x: 512
+    y: 300
   - item: weather_test_center_label

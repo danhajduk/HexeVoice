@@ -77,10 +77,10 @@ constexpr int kIdleClockFrameHeight = 210;
 constexpr int kActivitySpriteSize = 180;
 constexpr int kSidebarButtonWidth = 72;
 constexpr int kSidebarButtonHeight = 56;
-constexpr size_t kActivitySpriteCount = 4;
+constexpr size_t kActivitySpriteCount = 5;
 constexpr size_t kSidebarButtonCount = 3;
 constexpr size_t kMaxScreens = 16;
-constexpr size_t kMaxScreenElements = 8;
+constexpr size_t kMaxScreenElements = 16;
 constexpr int kTimerPrimaryWidth = 500;
 constexpr int kTimerPrimaryHeight = 150;
 constexpr int kTimerUpcomingWidth = 520;
@@ -313,7 +313,7 @@ struct StatusLayout {
   } sidebars;
   struct ActivitySprites {
     AnimatedSpriteLayout items[kActivitySpriteCount] = {
-        {422, 205}, {422, 205}, {422, 205}, {422, 205}};
+        {422, 205}, {422, 205}, {422, 205}, {422, 205}, {422, 205}};
   } activity_sprites;
   struct TimerScreen {
     bool enabled = true;
@@ -450,6 +450,7 @@ StatusSprite g_activity_listening_sprite{"activity_listening", kActivitySpriteSi
 StatusSprite g_activity_thinking_sprite{"activity_thinking", kActivitySpriteSize, kActivitySpriteSize};
 StatusSprite g_activity_replay_sprite{"activity_replay", kActivitySpriteSize, kActivitySpriteSize};
 StatusSprite g_activity_timer_sprite{"activity_timer", kActivitySpriteSize, kActivitySpriteSize};
+StatusSprite g_activity_cross_sprite{"activity_cross", kActivitySpriteSize, kActivitySpriteSize};
 StatusSprite g_button_timer_sprite{"button_timer", kSidebarButtonWidth, kSidebarButtonHeight};
 StatusSprite g_button_weather_sprite{"button_weather", kSidebarButtonWidth, kSidebarButtonHeight};
 StatusSprite g_button_config_sprite{"button_config", kSidebarButtonWidth, kSidebarButtonHeight};
@@ -1222,7 +1223,7 @@ void parse_animated_text(cJSON *item, AnimatedTextLayout *layout, const char *de
 
 int activity_sprite_index(const char *name) {
   static constexpr const char *kNames[kActivitySpriteCount] = {
-      "listening", "thinking", "replay", "timer"};
+      "listening", "thinking", "replay", "timer", "cross"};
   for (size_t index = 0; index < kActivitySpriteCount; ++index) {
     if (name != nullptr && std::strcmp(name, kNames[index]) == 0) {
       return static_cast<int>(index);
@@ -2240,6 +2241,7 @@ void draw_activity_sprite(
       &g_activity_thinking_sprite,
       &g_activity_replay_sprite,
       &g_activity_timer_sprite,
+      &g_activity_cross_sprite,
   };
   for (size_t index = 0; index < kActivitySpriteCount; ++index) {
     if (static_cast<int>(index) != active_index) {
@@ -3062,6 +3064,7 @@ void reload_display_assets() {
   release_status_sprite(&g_activity_thinking_sprite);
   release_status_sprite(&g_activity_replay_sprite);
   release_status_sprite(&g_activity_timer_sprite);
+  release_status_sprite(&g_activity_cross_sprite);
   release_status_sprite(&g_button_timer_sprite);
   release_status_sprite(&g_button_weather_sprite);
   release_status_sprite(&g_button_config_sprite);

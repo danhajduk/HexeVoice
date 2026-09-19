@@ -369,6 +369,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
         "activity_thinking",
         "activity_replay",
         "activity_timer",
+        "activity_cross",
         "button_timer",
         "button_weather",
         "button_config",
@@ -541,16 +542,22 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         for item in weather_test_screen["elements"]
         if item["type"] == "text"
     ] == [
-        ("weather_test_top_left_cross", 130, 80),
         ("weather_test_top_left_label", 130, 104),
-        ("weather_test_top_right_cross", 880, 80),
         ("weather_test_top_right_label", 880, 104),
-        ("weather_test_bottom_left_cross", 130, 470),
         ("weather_test_bottom_left_label", 130, 494),
-        ("weather_test_bottom_right_cross", 849, 470),
         ("weather_test_bottom_right_label", 849, 494),
-        ("weather_test_center_cross", 512, 300),
         ("weather_test_center_label", 512, 324),
+    ]
+    assert [
+        (item["sprite"], item["x"], item["y"])
+        for item in weather_test_screen["elements"]
+        if item["type"] == "activity"
+    ] == [
+        ("cross", 130, 80),
+        ("cross", 880, 80),
+        ("cross", 130, 470),
+        ("cross", 849, 470),
+        ("cross", 512, 300),
     ]
     conditional_screens = [
         screen for screen in screens if screen["id"] not in {"weather_test", "default"}
@@ -566,7 +573,9 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert 'cJSON_GetObjectItem(screen_item, "sidebars")' in source
     assert 'cJSON_GetObjectItem(screen_item, "buttons")' in source
     activity_items = layout["activity_sprites"]["items"]
-    assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
+    assert [item["id"] for item in activity_items] == [
+        "listening", "thinking", "replay", "timer", "cross"
+    ]
     assert all(not item.get("animations") for item in activity_items)
     for element in ("sprite", "hours", "separator", "minutes", "date"):
         assert layout["idle_clock"][element]["animations"]

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.19.13",
-  "updated_at": "2026-09-19T00:11:25.131368+00:00",
+  "asset_library_version": "2026.09.19.15",
+  "updated_at": "2026-09-19T00:18:21.173369+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -129,14 +129,25 @@
       }
     },
     {
+      "asset_id": "activity_cross",
+      "media_type": "sprite",
+      "filename": "activity_cross.alpha8",
+      "source_filename": "activity_cross.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "d784d036e80a55a02daeb82c62a4d2de5f12a2f55c78c5c28c594ddc327820b2"
+      }
+    },
+    {
       "asset_id": "activity_layout",
       "media_type": "sprite",
       "filename": "activity_layout.json",
       "source_filename": "activity_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 184,
-        "sha256": "8a37bf1ccd456d46f914a78c350cc64b9eeef25a27373436e5969ae344faac67"
+        "size_bytes": 215,
+        "sha256": "f9f46943f7a67b24810dd755abbb21da8089ab99b986fe15cadd16c234b2be4f"
       }
     },
     {
@@ -421,8 +432,8 @@
       "source_filename": "screens_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 10171,
-        "sha256": "da778f37ca8b136bcac4a8507eef459141c0077ee14f8ab84cd4c6179aa25179"
+        "size_bytes": 9730,
+        "sha256": "a43a5407880d9222f2d3a580c62c6f765f7167fabcbfb30738b5e098a5d732ca"
       }
     },
     {
@@ -473,6 +484,20 @@
         "channel_order": "rgb",
         "size_bytes": 97200,
         "sha256": "7fb6d4c7a0513536ae7d39e9c88882263efc03b5a380ea62e981090970a8154a"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_cross",
+      "media_type": "sprite",
+      "filename": "activity_cross.rgb888",
+      "source_filename": "activity_cross.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "685e2f97b46ec0eacb4a73fb179f12b90a098724b6d9f5ab23b6e02e30822f01"
       }
     },
     {

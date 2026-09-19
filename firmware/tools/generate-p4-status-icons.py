@@ -9,6 +9,7 @@ CYAN = (53, 244, 219, 255)
 BLUE = (85, 184, 255, 255)
 MAGENTA = (255, 74, 173, 255)
 YELLOW = (255, 211, 79, 255)
+RED = (255, 48, 48, 255)
 
 
 def canvas(size=40):
@@ -64,6 +65,12 @@ def activity_timer(draw):
     draw.line((74, 36, 106, 36), fill=BLUE, width=5)
     draw.line((90, 92, 90, 65), fill=CYAN, width=5)
     draw.line((90, 92, 112, 105), fill=MAGENTA, width=5)
+
+
+def activity_cross(draw):
+    draw.line((72, 90, 108, 90), fill=RED, width=5)
+    draw.line((90, 72, 90, 108), fill=RED, width=5)
+    draw.ellipse((87, 87, 93, 93), fill=(255, 255, 255, 255))
 
 
 def activity_booting(draw):
@@ -263,6 +270,7 @@ def main():
     save("activity_thinking", activity_thinking, 180)
     save("activity_replay", activity_replay, 180)
     save("activity_timer", activity_timer, 180)
+    save("activity_cross", activity_cross, 180)
     save("activity_booting", activity_booting, 180)
     save("activity_wifi_connecting", activity_wifi_connecting, 180)
     save("activity_backend_connecting", activity_backend_connecting, 180)
